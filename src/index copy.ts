@@ -124,7 +124,7 @@ function init() {
                     })
 
                     const material = new THREE.MeshPhongMaterial({
-                        color: 0x7777ff,
+                        color: 0x111111,
                         // emissive: 0x143542,
                         // shininess: 100,
                         // specular: 0xffffff,
@@ -144,10 +144,34 @@ function init() {
                     group.add(mesh);
 
                 });
-                originalPositions.set(group, {
-                    position: group.position.clone(), // Use pivot position
+
+                // Create a pivot object for each group
+                const pivot = new THREE.Object3D();
+
+                // Calculate the group's bounding box and center
+                const box = new THREE.Box3().setFromObject(group);
+                const center = new THREE.Vector3();
+                box.getCenter(center);
+                group.children.forEach((child) => {
+                    child.position.sub(center); // Adjust child positions relative to the center
                 });
-                svgGroup.add(group);
+                group.position.copy(center); // Move the group to the center
+                pivot.add(group); // Add the group to the pivot
+
+                // Assign a random normalized vector as the rotation axis and a maximum rotation angle
+                const rotationAxis = new THREE.Vector3(Math.random(), Math.random(), Math.random()).normalize();
+                const maxRotationAngle = 4* Math.PI * 2; // Full rotation
+
+                // Store the pivot with the group's original properties
+                originalPositions.set(group, {
+                    position: pivot.position.clone(), // Use pivot position
+                    pivot,
+                    rotationAxis,
+                    maxRotationAngle
+                });
+
+                svgGroup.add(pivot); // Add the pivot to the svgGroup instead of the group directly
+
             });
 
             console.log(svgGroup.children.length);
@@ -201,11 +225,11 @@ function init() {
             plane.setFromNormalAndCoplanarPoint(pNormal, planeIntersect);
             shift.subVectors(targetGroup.position, intersects[0].point);
         }
-        // onMove(event);
-        console.log("pointerdown");
     });
 
-    const onMove = (event) => {
+
+
+    document.addEventListener("pointermove", (event) => {
         if (isDragging) {
             // Update mouse position
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
@@ -220,42 +244,43 @@ function init() {
             // Move the object to the new position, accounting for the initial shift
             object.position.copy(planeIntersect.add(shift));
 
-            // const originalData = originalPositions.get(object);
-            // const distance = object.position.distanceTo(originalData.position!);
-            // let angle = Math.min(distance * 0.1, originalData.maxRotationAngle);
-            // object.rotation.setFromVector3(originalData.rotationAxis.clone().multiplyScalar(angle));
+            // Rotate object
+            const originalData = originalPositions.get(object);
+            const distance = 5*object.position.distanceTo(originalData.position!);
+            let angle = Math.min(distance * 0.1, originalData.maxRotationAngle);
+            object.rotation.setFromVector3(originalData.rotationAxis.clone().multiplyScalar(angle));
         }
-    };
-
-    document.addEventListener("touchmove", (event) => {
-        onMove(event.touches[0]);
     });
-
-    document.addEventListener("pointermove", onMove);
 
     document.addEventListener("pointerup", () => {
         isDragging = false;
     });
 
-    document.addEventListener("touchend", () => {    
-        isDragging = false;
-    });
+    // document.addEventListener("pointerup", () => {
+    //     if (isDragging) {
+    //         isDragging = false;
+    //         dragObject = null;
+    //     }
+    // });
 }
 
 // Variables to control the arc movement
 let angle = 0; // Initial angle
-const speed = 0.1; // Speed of the animation
+const speed = 0.5; // Speed of the animation
 const maxHeightChange = 1; // Max height change in degrees
+
+let objectDynamics = new Map();
 
 function animate() {
     requestAnimationFrame(animate);
 
-    angle += speed;
-    const radians = angle * (Math.PI / 180);
-    const deltaY = (Math.sin(radians) - 1) * maxHeightChange;
-    camera.position.y = deltaY + 1; // Adjust +1 (or your preferred offset) to ensure the camera doesn't "flip"
-    camera.up.set(0, 1, 0); // Ensure the up vector is correct, preventing flips.
-    camera.lookAt(scene.position);
+    // angle += speed;
+    // const radians = angle * (Math.PI / 180);
+    // const deltaY = (Math.sin(radians) - 1) * maxHeightChange;
+    // camera.position.y = deltaY + 1; // Adjust +1 (or your preferred offset) to ensure the camera doesn't "flip"
+    // camera.up.set(0, 1, 0); // Ensure the up vector is correct, preventing flips.
+    // camera.lookAt(scene.position);
+
 
     if (svgGroup) {
         for (const object of svgGroup.children) {
@@ -268,20 +293,20 @@ function animate() {
                 const stiffness = 0.05; // Spring stiffness
                 const damping = 0.2; // Damping factor to slow down
                 const mass = 5; // Mass of the object
-    
+
                 // Calculate spring force
                 let displacement = object.position.clone().sub(originalPosition);
                 let springForce = displacement.multiplyScalar(-stiffness);
                 let dampingForce = object.userData.velocity.clone().multiplyScalar(-damping);
                 let force = springForce.add(dampingForce);
-    
+
                 // Update velocity based on force
                 let acceleration = force.divideScalar(mass);
                 object.userData.velocity.add(acceleration);
-    
+
                 // Update position based on velocity
                 object.position.add(object.userData.velocity);
-    
+
                 // Check if object is near the original position and if its velocity is low, then stop the animation
                 if (displacement.length() < 0.0001 && object.userData.velocity.length() < 0.0001) {
                     object.position.copy(originalPosition);

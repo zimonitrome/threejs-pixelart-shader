@@ -101,7 +101,7 @@ export default class RenderPixelatedPass extends Pass {
                     float normalIndicator = clamp(smoothstep(-.01, .01, normalDiff), 0.0, 1.0);
                     
                     // Only the shallower pixel should detect the normal edge.
-                    float depthIndicator = clamp(sign(-depthDiff * .25 + .0025), 0.0, 1.0);
+                    float depthIndicator = clamp(sign(depthDiff * .25 + .0025), 0.0, 1.0);
 
                     return distance(normal, getNormal(x, y)) * depthIndicator * normalIndicator;
                 }
@@ -109,18 +109,13 @@ export default class RenderPixelatedPass extends Pass {
                 float depthEdgeIndicator() {
                     float depth = getDepth(0, 0);
                     vec3 normal = getNormal(0, 0);
-                
                     float diff = 0.0;
-                
-                    // Accumulate negative differences to favor deeper pixels
-                    diff += clamp(depth - getDepth(1, 0), 0.0, 1.0);
-                    diff += clamp(depth - getDepth(-1, 0), 0.0, 1.0);
-                    diff += clamp(depth - getDepth(0, 1), 0.0, 1.0);
-                    diff += clamp(depth - getDepth(0, -1), 0.0, 1.0);
-                    
+                    diff += clamp(getDepth(1, 0) - depth, 0.0, 1.0);
+                    diff += clamp(getDepth(-1, 0) - depth, 0.0, 1.0);
+                    diff += clamp(getDepth(0, 1) - depth, 0.0, 1.0);
+                    diff += clamp(getDepth(0, -1) - depth, 0.0, 1.0);
                     return floor(smoothstep(0.01, 0.02, diff) * 2.) / 2.;
                 }
-                
 
                 float normalEdgeIndicator() {
                     float depth = getDepth(0, 0);
@@ -139,18 +134,13 @@ export default class RenderPixelatedPass extends Pass {
                 void main() {
                     vec4 texel = texture2D( tDiffuse, vUv );
 
-                    // float depthEdgeCoefficient = 999.0;
-                    // float normalEdgeCoefficient = 999.0;
-                    float coeff =  3.0;
-                    float coeff2 =  0.3;
+                    float normalEdgeCoefficient = .3;
+                    float depthEdgeCoefficient = .4;
 
                     float dei = depthEdgeIndicator();
                     float nei = normalEdgeIndicator();
 
-                    float sign = +1.0;
-
-                    float coefficient = dei > 0.0 ? (1.0 - sign*coeff * dei) : (1.0 + sign*coeff2 * nei);
-                    //float coefficient = dei > 0.0 ? (1.0 - depthEdgeCoefficient * dei) : (1.0 - normalEdgeCoefficient * nei);
+                    float coefficient = dei > 0.0 ? (1.0 - depthEdgeCoefficient * dei) : (1.0 + normalEdgeCoefficient * nei);
 
                     gl_FragColor = texel * coefficient;
                 }
