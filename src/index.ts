@@ -40,7 +40,20 @@ var shift = new THREE.Vector3();
 
 let svgGroup: THREE.Group;
 
-let originalPositions = new Map();
+let groupData = new Map();
+
+function getQuaternion(x: number, y: number, matrix: number[][]) {
+    // Matrix multiplication
+    let X = matrix[0][0] * x + matrix[0][1] * y;
+    let Y = matrix[1][0] * x + matrix[1][1] * y;
+    let Z = matrix[2][0] * x + matrix[2][1] * y;
+
+    let axis = new THREE.Vector3(X, Y, Z);
+    let magnitude = axis.length();
+    axis.normalize()
+    let quaternion = new THREE.Quaternion();
+    return quaternion.setFromAxisAngle(axis, magnitude);
+}
 
 function init() {
 
@@ -91,8 +104,6 @@ function init() {
     {
         const loader = new SVGLoader();
         loader.load(zimoLogo, svgData => {
-            console.log(svgData);
-
             // Group that will contain all of our paths
             svgGroup = new THREE.Group();
             // svgGroup.scale.multiplyScalar(0.002);
@@ -144,13 +155,32 @@ function init() {
                     group.add(mesh);
 
                 });
-                originalPositions.set(group, {
+
+                // Create a pivot object for each group
+                const pivot = new THREE.Object3D();
+
+                // Calculate the group's bounding box and center
+                const box = new THREE.Box3().setFromObject(group);
+                const center = new THREE.Vector3();
+                box.getCenter(center);
+                group.children.forEach((child) => {
+                    child.position.sub(center); // Adjust child positions relative to the center
+                });
+                group.position.copy(center); // Move the group to the center
+                pivot.add(group); // Add the group to the pivot
+
+                let rotationMatrix = [
+                    [Math.random(), Math.random()], // Row for X
+                    [Math.random(), Math.random()], // Row for Y
+                    [Math.random(), Math.random()]  // Row for Z
+                ];
+
+                groupData.set(group, {
                     position: group.position.clone(), // Use pivot position
+                    rotationMatrix,
                 });
                 svgGroup.add(group);
             });
-
-            console.log(svgGroup.children.length);
 
             // Center the group
             new THREE.Box3().setFromObject(svgGroup).getCenter(svgGroup.position).multiplyScalar(- 1);
@@ -202,7 +232,6 @@ function init() {
             shift.subVectors(targetGroup.position, intersects[0].point);
         }
         // onMove(event);
-        console.log("pointerdown");
     });
 
     const onMove = (event) => {
@@ -218,12 +247,17 @@ function init() {
             const object = dragObject!;
 
             // Move the object to the new position, accounting for the initial shift
-            object.position.copy(planeIntersect.add(shift));
+            let posDiff = planeIntersect.add(shift);
+            object.position.copy(posDiff);
 
-            // const originalData = originalPositions.get(object);
-            // const distance = object.position.distanceTo(originalData.position!);
-            // let angle = Math.min(distance * 0.1, originalData.maxRotationAngle);
-            // object.rotation.setFromVector3(originalData.rotationAxis.clone().multiplyScalar(angle));
+            // Rotate
+            let newPos = new THREE.Vector3(0, 0, 0);
+            newPos.copy(posDiff);
+            const originalData = groupData.get(object);
+            newPos.sub(originalData!.position);
+            let quaternion = getQuaternion(newPos.x, newPos.y, groupData.get(object)!.rotationMatrix);
+            object.quaternion.copy(quaternion);
+            object.userData.velocity.set(0, 0, 0.01);
         }
     };
 
@@ -237,7 +271,7 @@ function init() {
         isDragging = false;
     });
 
-    document.addEventListener("touchend", () => {    
+    document.addEventListener("touchend", () => {
         isDragging = false;
     });
 }
@@ -247,8 +281,20 @@ let angle = 0; // Initial angle
 const speed = 0.1; // Speed of the animation
 const maxHeightChange = 1; // Max height change in degrees
 
+// Simulated spring parameters
+const stiffness = 0.05; // Spring stiffness
+const damping = 0.2; // Damping factor to slow down
+const mass = 5; // Mass of the object
+
+const originalOrientation = new THREE.Quaternion(); // Store the original orientation
+
+const clock = new THREE.Clock();
+
 function animate() {
     requestAnimationFrame(animate);
+
+    if (!clock) return;
+    const deltaTime = clock.getDelta();
 
     angle += speed;
     const radians = angle * (Math.PI / 180);
@@ -260,33 +306,37 @@ function animate() {
     if (svgGroup) {
         for (const object of svgGroup.children) {
             if (isDragging && object === dragObject) continue; // Skip the object being dragged (if any
-            const originalData = originalPositions.get(object);
-            if (originalData) {
+            const originalData = groupData.get(object);
+            if (!originalData) continue;
+            if (object.userData.velocity.length()) {
+                // Position recovery logic here (as already implemented)
                 const originalPosition = originalData.position;
 
-                // Simulated spring parameters
-                const stiffness = 0.05; // Spring stiffness
-                const damping = 0.2; // Damping factor to slow down
-                const mass = 5; // Mass of the object
-    
                 // Calculate spring force
-                let displacement = object.position.clone().sub(originalPosition);
-                let springForce = displacement.multiplyScalar(-stiffness);
-                let dampingForce = object.userData.velocity.clone().multiplyScalar(-damping);
-                let force = springForce.add(dampingForce);
-    
+                const displacement = object.position.clone().sub(originalPosition);
+                const springForce = displacement.multiplyScalar(-stiffness);
+                const dampingForce = object.userData.velocity.clone().multiplyScalar(-damping);
+                const force = springForce.add(dampingForce);
+
                 // Update velocity based on force
-                let acceleration = force.divideScalar(mass);
+                const acceleration = force.divideScalar(mass);
                 object.userData.velocity.add(acceleration);
-    
+
                 // Update position based on velocity
                 object.position.add(object.userData.velocity);
-    
+
                 // Check if object is near the original position and if its velocity is low, then stop the animation
                 if (displacement.length() < 0.0001 && object.userData.velocity.length() < 0.0001) {
                     object.position.copy(originalPosition);
                     object.userData.velocity.set(0, 0, 0); // Reset velocity
                 }
+
+                // Rotate
+                let newPos = new THREE.Vector3(0, 0, 0);
+                newPos.copy(object.position);
+                newPos.sub(originalData.position);
+                let quaternion = getQuaternion(newPos.x, newPos.y, originalData.rotationMatrix);
+                object.quaternion.copy(quaternion);
             }
         }
     }

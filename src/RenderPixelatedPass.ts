@@ -113,10 +113,10 @@ export default class RenderPixelatedPass extends Pass {
                     float diff = 0.0;
                 
                     // Accumulate negative differences to favor deeper pixels
-                    diff += clamp(depth - getDepth(1, 0), 0.0, 1.0);
-                    diff += clamp(depth - getDepth(-1, 0), 0.0, 1.0);
-                    diff += clamp(depth - getDepth(0, 1), 0.0, 1.0);
-                    diff += clamp(depth - getDepth(0, -1), 0.0, 1.0);
+                    diff += clamp(1.0*(depth - getDepth(1,  0)), 0.0, 1.0);  // Hack :(
+                    diff += clamp(1.0*(depth - getDepth(-1, 0)), 0.0, 1.0);  // Hack :(
+                    diff += clamp(1.0*(depth - getDepth(0,  1)), 0.0, 1.0);
+                    diff += clamp(1.0*(depth - getDepth(0, -1)), 0.0, 1.0);
                     
                     return floor(smoothstep(0.01, 0.02, diff) * 2.) / 2.;
                 }
@@ -139,8 +139,6 @@ export default class RenderPixelatedPass extends Pass {
                 void main() {
                     vec4 texel = texture2D( tDiffuse, vUv );
 
-                    // float depthEdgeCoefficient = 999.0;
-                    // float normalEdgeCoefficient = 999.0;
                     float coeff =  3.0;
                     float coeff2 =  0.3;
 
@@ -150,7 +148,6 @@ export default class RenderPixelatedPass extends Pass {
                     float sign = +1.0;
 
                     float coefficient = dei > 0.0 ? (1.0 - sign*coeff * dei) : (1.0 + sign*coeff2 * nei);
-                    //float coefficient = dei > 0.0 ? (1.0 - depthEdgeCoefficient * dei) : (1.0 - normalEdgeCoefficient * nei);
 
                     gl_FragColor = texel * coefficient;
                 }
