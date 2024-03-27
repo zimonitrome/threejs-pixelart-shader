@@ -98,27 +98,26 @@ export default class RenderPixelatedPass extends Pass {
                     // Edge pixels should yield to faces closer to the bias direction.
                     vec3 normalEdgeBias = vec3(1., 1., 1.); // This should probably be a parameter.
                     float normalDiff = dot(normal - getNormal(x, y), normalEdgeBias);
-                    float normalIndicator = clamp(smoothstep(-.01, .01, normalDiff), 0.0, 1.0);
+                    // Adjusting for "radius" by making the detection stricter or more lenient
+                    float radiusInfluence = 1.0; // Placeholder for any adjustments simulating radius effect
+                    float normalIndicator = clamp(smoothstep(-.01 * radiusInfluence, .01 * radiusInfluence, normalDiff), 0.0, 1.0);
                     
-                    // Only the shallower pixel should detect the normal edge.
-                    float depthIndicator = clamp(sign(-depthDiff * .25 + .0025), 0.0, 1.0);
+                    float depthIndicator = clamp(sign(-depthDiff * .25 + .0025 * radiusInfluence), 0.0, 1.0);
 
                     return distance(normal, getNormal(x, y)) * depthIndicator * normalIndicator;
                 }
 
                 float depthEdgeIndicator() {
                     float depth = getDepth(0, 0);
-                    vec3 normal = getNormal(0, 0);
                 
                     float diff = 0.0;
-                
-                    // Accumulate negative differences to favor deeper pixels
-                    diff += clamp(1.0*(depth - getDepth(1,  0)), 0.0, 1.0);  // Hack :(
-                    diff += clamp(1.0*(depth - getDepth(-1, 0)), 0.0, 1.0);  // Hack :(
-                    diff += clamp(1.0*(depth - getDepth(0,  1)), 0.0, 1.0);
-                    diff += clamp(1.0*(depth - getDepth(0, -1)), 0.0, 1.0);
+
+                    diff += clamp(depth - getDepth( 0, -1), 0.0,  1.0);
+                    diff += clamp(depth - getDepth( 0,  1), 0.0,  1.0);
+                    diff += clamp(depth - getDepth( 1, -0), 0.0,  1.0);
+                    diff += clamp(depth - getDepth( 1,  0), 0.0,  1.0);
                     
-                    return floor(smoothstep(0.01, 0.02, diff) * 2.) / 2.;
+                    return floor(smoothstep(0.001, 0.01, diff) * 2.) / 2.;
                 }
                 
 
@@ -148,6 +147,7 @@ export default class RenderPixelatedPass extends Pass {
                     float sign = +1.0;
 
                     float coefficient = dei > 0.0 ? (1.0 - sign*coeff * dei) : (1.0 + sign*coeff2 * nei);
+                    // float coefficient = 1.0 - sign*coeff * dei;
 
                     gl_FragColor = texel * coefficient;
                 }

@@ -274,6 +274,20 @@ function init() {
     document.addEventListener("touchend", () => {
         isDragging = false;
     });
+
+
+    // When press space
+    document.addEventListener("keydown", (event) => {
+        if (event.code === "Space") {
+            // Reset all objects
+            svgGroup.children.slice(1).forEach((object, index) => {
+                setTimeout(() => {
+                    object.position.copy(groupData.get(object)!.position);
+                    object.userData.velocity.add(new THREE.Vector3(0, 0.03, 0)); // Add a small velocity to start the animation
+                }, index * 75); // Delay each object by 100 milliseconds
+            });
+        }
+    });
 }
 
 // Variables to control the arc movement
